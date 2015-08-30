@@ -1,3 +1,4 @@
+#define TEST
 #include "../solver.c"
 #include "unity.h"
 #include "unity_fixture.h"

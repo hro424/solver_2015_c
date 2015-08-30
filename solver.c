@@ -94,7 +94,9 @@ static int
 detect_collision(field_t *fp, int x, int y, int c)
 {
 	if (c & MASK_DIR) {	// vertical
-		if (y - 2 >= 0 &&
+		if (x >= 0 &&
+		    x < fp->width &&
+		    y - 2 >= 0 &&
 		    y < fp->height &&
 		    fp->grid[x][y] > 9 &&
 		    fp->grid[x][y - 1] > 9 &&
@@ -105,6 +107,8 @@ detect_collision(field_t *fp, int x, int y, int c)
 	else {
 		if (x >= 0 &&
 		    x + 2 < fp->width &&
+		    y >= 0 &&
+		    y < fp->height &&
 		    fp->grid[x][y] > 9 &&
 		    fp->grid[x + 1][y] > 9 &&
 		    fp->grid[x + 2][y] > 9) {
@@ -184,17 +188,21 @@ calc_score(ULONG n)
 	return score;
 }
 
-/*
+#ifndef TEST
 int
 main(int argc, char *argv[])
 {
 	_rand = 10;
 	printf("%u\n", _random());
-	initialize(10);
+	//initialize(10);
 	printf("score %u\n", calc_score(21));
 	printf("score %u\n", calc_score(3622589));
 	printf("score %u\n", calc_score(92500143622589));
 
+	for (ULONG i = 0; i < 0xFFFFFFFFFFFFFFFF; i++) {
+		printf("%u: %lu\n", i, calc_score(i));
+	}
+
 	return 0;
 }
-*/
+#endif

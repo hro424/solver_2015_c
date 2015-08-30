@@ -11,7 +11,7 @@ SRCS += unity.c unity_fixture.c all_tests.c test_init.c test_game.c
 
 all: test
 
-test: $(SRCS)
+test: $(SRCS) ../solver.c
 	$(CC) $(CFLAGS) $(SRCS) -o $@
 
 .PHONY: clean

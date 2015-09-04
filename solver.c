@@ -182,11 +182,31 @@ calc_score(ULONG n)
 
 	while (n > 1UL) {
 		n = n & 1UL ? (n << 1) + n + 1UL : n >> 1;
+		printf("%llu ", n);
 		score++;
 	}
+	printf("\n");
 
 	return score;
 }
+
+/*
+static void
+gen_collatz(UINT steps, list_head_t *head)
+{
+	list_for_each(elem, head) {
+		list_tail_add(list->head, x * 2);
+		if (x % 3 != 0) {
+			if ((x - 1) % 3 == 0) {
+				y = (x - 1) / 3;
+				if (y & 1) {
+					list_tail_add(list->head, y);
+				}
+			}
+		}
+	}
+}
+*/
 
 #ifndef TEST
 int
@@ -195,13 +215,21 @@ main(int argc, char *argv[])
 	_rand = 10;
 	printf("%u\n", _random());
 	//initialize(10);
+	/*
 	printf("score %u\n", calc_score(21));
 	printf("score %u\n", calc_score(3622589));
 	printf("score %u\n", calc_score(92500143622589));
+	*/
+	printf("score %u\n", calc_score(9));
+	printf("score %u\n", calc_score(97));
+	printf("score %u\n", calc_score(871));
+	printf("score %u\n", calc_score(6171));
 
+	/*
 	for (ULONG i = 0; i < 0xFFFFFFFFFFFFFFFF; i++) {
 		printf("%u: %lu\n", i, calc_score(i));
 	}
+	*/
 
 	return 0;
 }

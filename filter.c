@@ -1,11 +1,51 @@
+/*
+ * 00000011
+ * 00000110
+ * 00001001
+ * 00001010
+ * 00001111
+ * 00010010
+ */
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 #include <fcntl.h>
 #include <unistd.h>
 
+typedef unsigned long	ULONG;
+typedef unsigned int	UINT;
+typedef uint64_t	U64;
+typedef uint32_t	U32;
+typedef uint16_t	U16;
+typedef uint8_t		U8;
+typedef int64_t		S64;
+typedef int32_t		S32;
+typedef int16_t		S16;
+typedef int8_t		S8;
+
+static U16
+_random(void)
+{
+	const ULONG m = 1UL << 32;
+	const ULONG a = 1103515245UL;
+	const ULONG c = 12345UL;
+	_rand = (a * _rand + c) % m;
+	return (_rand >> 16) & 0x7FFFUL;
+}
+
+static void
+gennum(U32 out[], size_t count)
+{
+	for (size_t i = 0; i < count; ++i) {
+		out[i] = _random();
+		out[i] = (out[i] << 16) | _random();
+		out[i] %= 100000000U;
+	}
+}
+
 static int
-pop(unsigned int x)
+pop(U32 x)
 {
 	x = (x & 0x55555555) + ((x >> 1) & 0x55555555);
 	x = (x & 0x33333333) + ((x >> 2) & 0x33333333);
@@ -17,7 +57,7 @@ pop(unsigned int x)
 }
 
 static int
-mpop(unsigned short x[], size_t l)
+mpop(U32 x[], size_t l)
 {
 	int m = 0;
 
@@ -34,9 +74,15 @@ mpop(unsigned short x[], size_t l)
 }
 
 static int
-mdiv3(unsigned short in[], size_t l)
+misdividable3(U32 in[], size_t l)
 {
-	return 0;
+	U32 tmp;
+
+	for (size_t i = 0; i < l; ++i) {
+		tmp += in[i];
+	}
+
+	return tmp % 3;
 }
 
 static int
@@ -48,6 +94,18 @@ mmul3(unsigned short inout[], size_t l)
 static int
 mscanf(FILE *fp, struct pair *p)
 {
+	for (;;) {
+		c = fgetc(fp);
+		if (c == ' ') {
+			is_next = 1;
+		}
+		else if (c == '\n') {
+			is_next = 0;
+		}
+		else {
+		}
+	}
+
 	return 0;
 }
 

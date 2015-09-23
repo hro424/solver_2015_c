@@ -213,7 +213,8 @@ int
 main(int argc, char *argv[])
 {
 	_rand = 10;
-	printf("%u\n", _random());
+	printf("random(): %u\n", _random());
+	printf("rand: %lu\n", _rand);
 	//initialize(10);
 	/*
 	printf("score %u\n", calc_score(21));

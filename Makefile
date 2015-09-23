@@ -1,6 +1,6 @@
 CC = clang
 
-all: solver
+all: solver 
 
 solver: solver.c
 	$(CC) -o $@ $^ -Wall -O3

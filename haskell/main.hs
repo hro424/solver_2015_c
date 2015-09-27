@@ -57,36 +57,49 @@ rotate (Block n North) = Block n East
 rotate (Block n East) = Block n South
 rotate (Block n South) = Block n West
 
-fstBlock :: Block -> Int
-fstBlock (Block n West) = n `div` 100
-fstBlock (Block n North) = n `div` 100
-fstBlock (Block n East) = n `mod` 10
-fstBlock (Block n South) = n `mod` 10
+fstCell :: Block -> Int
+fstCell (Block n West) = n `div` 100
+fstCell (Block n North) = n `div` 100
+fstCell (Block n East) = n `mod` 10
+fstCell (Block n South) = n `mod` 10
 
-sndBlock :: Block -> Int
-sndBlock (Block n _) = n `div` 10 `mod` 10
+sndCell :: Block -> Int
+sndCell (Block n _) = n `div` 10 `mod` 10
 
-thdBlock :: Block -> Int
-thdBlock (Block n West) = n `mod` 10
-thdBlock (Block n North) = n `mod` 10
-thdBlock (Block n East) = n `div` 100
-thdBlock (Block n South) = n `div` 100
+thdCell :: Block -> Int
+thdCell (Block n West) = n `mod` 10
+thdCell (Block n North) = n `mod` 10
+thdCell (Block n East) = n `div` 100
+thdCell (Block n South) = n `div` 100
+
+compose :: Int -> Int -> [Int] -> (Integer, [Int])
+compose width height bs =
+    | cond == 2 = (value, bs')
+    | cond == 1 = (value, bs')
+    | otherwise = (value, bs')
+    where
+        cond = width `mod` 3
+        value = foldr (\x -> \y -> x + y * 1000) 0 $ take width bs
+
+initializeGame :: Int -> (Int, Int, Int, Int, Int)
+initializeGame seed =
+    let
+        (t, seed') = random seed
+        (n, seed'') = random seed'
+        (h, seed''') = random seed''
+        (w, seed'''') = random seed'''
+    in
+        (t `mod` 196 + 5, n `mod` 1901 + 100,
+         h `mod` 81 + 20, w `mod` 181 + 20, seed'''')
 
 main = do
-    setSeed 10
-    t <- random
-    let timeout = t `mod` 196 + 5
-    n <- random
-    let nblocks = n `mod` 1901 + 100
-    h <- random
-    let height = h `mod` 81 + 20
-    w <- random
-    let width = w `mod` 181 + 20
+    let seed = 10
+    let (timeout, nblocks, height, width, seed') = initializeGame seed
     putStrLn ("timeout " ++ (show timeout))
     putStrLn ("nblocks " ++ (show nblocks))
     putStrLn ("height " ++ (show height))
     putStrLn ("width " ++ (show width))
-    bs <- take nblocks $ randoms
-    let blocks = map (mod 1000) bs
+    let bs = take nblocks $ randoms seed'
+    let blocks = map (`mod` 1000) bs
+    print blocks
     putStrLn "end"
-    

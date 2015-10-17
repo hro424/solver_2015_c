@@ -1,3 +1,4 @@
+// usage: solver <seed> <file>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -28,7 +29,9 @@ typedef struct block_t {
 	size_t ops_len;
 } block_t;
 
-static uint32_t Seed = 0;
+static const size_t OPS_MARGIN = 8;
+
+static uint32_t Seed;
 static block_t *BlockBuf;
 static size_t BlockBufLen;
 static block_t **TableBuf;
@@ -50,6 +53,10 @@ prand(void)
 static void
 move(block_t *b, char direction, size_t count)
 {
+	if (count == 0) {
+		return;
+	}
+
 	assert(b->count + count < b->ops_len);
 	memset(&b->ops[b->count], direction, count);
 	b->count += count;
@@ -103,7 +110,7 @@ create_blocks(size_t count, const game_t *g)
 	}
 
 	for (size_t i = 0; i < count; ++i) {
-		bs[i].ops_len = g->width + g->height + 4;
+		bs[i].ops_len = g->width + g->height + OPS_MARGIN;
 		bs[i].ops = malloc(bs[i].ops_len);
 		if (bs[i].ops == NULL) {
 			fprintf(stderr, "out of memmory @ %s\n", __func__);
@@ -217,18 +224,67 @@ compare(const void *lhs, const void *rhs)
 	return (*r)->number - (*l)->number;
 }
 
+static int
+isMultiplesOf3(block_t *bs[], size_t count)
+{
+	uint32_t total = 0;
+
+	for (size_t i = 0; i < count; ++i) {
+		uint16_t n = bs[i]->number;
+		uint16_t nn = n / 100 + n % 100 / 10 + n % 10;
+		total += nn;
+	}
+
+	return total % 3 != 0;
+}
+
 static void
-sort(block_t *bs[], size_t count)
+reverse(block_t *bs)
+{
+	uint16_t n = bs->number;
+	rotate(bs, 2);
+	bs->number = n / 100 + n % 100 / 10 * 10 + n % 10 * 100;
+}
+
+static void
+exchange(block_t *bs[], size_t lhs, size_t rhs)
+{
+	block_t *tmp = bs[lhs];
+	bs[lhs] = bs[rhs];
+	bs[rhs] = tmp;
+}
+
+static void
+sort_v(block_t *bs[], size_t count)
 {
 	for (size_t i = 0; i < count; ++i) {
 		uint16_t n = bs[i]->number;
 		if (n / 100 < n % 10) {
-			rotate(bs[i], 2);
-			bs[i]->number = n / 100 +
-				n % 100 / 10 * 10 +
-				n % 10 * 100;
+			reverse(bs[i]);
 		}
 	}
+
+	qsort(bs, count, sizeof(block_t*), compare);
+
+	if (isMultiplesOf3(bs, count)) {
+		uint16_t n;
+		size_t offset = 2;
+		while (((n = bs[count - 1]->number) & 1) == 0) {
+			if ((n / 100) & 1) {
+				rotate(bs[count - 1], 2);
+				break;
+			}
+			else {
+				exchange(bs, count - 1, count - offset);
+				++offset;
+			}
+		}
+	}
+}
+
+static void
+sort_h(block_t *bs[], size_t count)
+{
 	qsort(bs, count, sizeof(block_t*), compare);
 }
 
@@ -243,11 +299,12 @@ play_v(const game_t *g)
 	bs = get_block_buffer(g->width, g);
 	table = get_table_buffer(bs, g->width);
 
+	// for rotation in the sort
 	for (size_t i = 0; i < g->width; ++i) {
 		move_down(table[i], 1);
 	}
 
-	sort(table, g->width);
+	sort_v(table, g->width);
 
 	for (size_t i = 0; i < g->width; ++i) {
 		block_t *bp = table[i];
@@ -255,12 +312,13 @@ play_v(const game_t *g)
 		if (i < g->center) {
 			move_left(bp, g->center - i);
 		}
-		else {
+		else if (i > g->center) {
 			move_right(bp, i - g->center);
 		}
 
-		// move down the height - 2 because it has already been
-		// moved down before sort().
+		// final steps are calculated as follows:
+		//	height	- 3 (length of a block)
+		//		+ 1 (to finalize)
 		move_down(bp, g->height - 2);
 	}
 
@@ -283,11 +341,12 @@ play_h(const game_t *g)
 	bs = get_block_buffer(count, g);
 	table = get_table_buffer(bs, count);
 
+	// for rotation in the sort
 	for (size_t i = 0; i < count; ++i) {
 		move_down(table[i], 1);
 	}
 
-	sort(table, count);
+	sort_h(table, count);
 
 	for (size_t i = 0; i < g->width / 3; ++i) {
 		block_t *bp = table[i];
@@ -296,27 +355,27 @@ play_h(const game_t *g)
 		if (dest < g->center) {
 			move_left(bp, g->center - dest);
 		}
-		else {
+		else if (dest > g->center) {
 			move_right(bp, dest - g->center);
 		}
 
-		// move down the height because it has already been
-		// moved down before sort().
+		// final steps are calculated as follows:
+		//	height	- 1 (moved down before sort())
+		//		- 1 (vertial length of a block)
+		//		+ 1 (to finalize)
 		move_down(bp, g->height - 1);
 	}
 
-	for (size_t i = g->width / 3; i < g->width % 3; ++i) {
+	for (size_t i = 0; i < g->width % 3; ++i) {
 		block_t *bp = table[i];
-		rotate(bp, 1);
-		if (i < g->center) {
-			move_left(bp, g->center - i);
-		}
-		else {
-			move_right(bp, i - g->center);
-		}
+		size_t dest = g->width - g->width % 3 + i;
 
-		// move down the height because it has already been
-		// moved down before sort().
+		rotate(bp, 1);
+		move_right(bp, dest - g->center);
+
+		// final steps are calculated as follows:
+		//	height	- 3 (length of a block)
+		//		+ 1 (to finalize)
 		move_down(bp, g->height - 2);
 	}
 
@@ -366,13 +425,12 @@ main(int argc, char *argv[])
 	game_t game;
 
 	if (argc != 3) {
+		fprintf(stderr, "usage: solver <seed> <file>\n");
 		return EXIT_FAILURE;
 	}
 
 	BlockBuf = NULL;
-	BlockBufLen = 0;
 	TableBuf = NULL;
-	TableBufLen = 0;
 
 	if (!init_game(argv[1], argv[2], &game)) {
 		return EXIT_FAILURE;

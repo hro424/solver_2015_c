@@ -1,13 +1,15 @@
 CC = clang
-CFLAGS = -Wall -O3 -DNDEBUG
-#CFLAGS = -Wall -g
-TARGET = solver
+#CFLAGS = -Wall -O3 -DNDEBUG
+CFLAGS = -Wall -O0 -g
 SRCS = main.c
 
-all: $(TARGET)
+all: solver solver_simple
 
-$(TARGET): $(SRCS)
-	$(CC) $(CFLAGS) -o $(TARGET) $<
+solver: $(SRCS)
+	$(CC) $(CFLAGS) -DCONFIG_OPT -o $@ $<
+
+solver_simple: $(SRCS)
+	$(CC) $(CFLAGS) -o $@ $<
 
 .PHONY: clean
 clean: $(TARGET)

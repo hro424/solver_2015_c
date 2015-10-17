@@ -22,12 +22,22 @@ typedef struct game {
 	size_t center;
 } game_t;
 
-typedef struct block_t {
+typedef struct block {
 	uint16_t number;
 	size_t count;
 	char *ops;
 	size_t ops_len;
 } block_t;
+
+#if defined(CONFIG_OPT)
+typedef struct bignum {
+	uint32_t *num;
+	size_t count;
+} bignum_t;
+
+static const uint32_t BIGNUM_OOE = 1000000;
+static const size_t BIGNUM_ORDER = 6;
+#endif
 
 static const size_t OPS_MARGIN = 8;
 
@@ -35,6 +45,7 @@ static uint32_t Seed;
 static block_t *BlockBuf;
 static size_t BlockBufLen;
 static block_t **TableBuf;
+static block_t **TmpTable;
 static size_t TableBufLen;
 
 static uint16_t
@@ -60,41 +71,6 @@ move(block_t *b, char direction, size_t count)
 	assert(b->count + count < b->ops_len);
 	memset(&b->ops[b->count], direction, count);
 	b->count += count;
-}
-
-static int
-init_game(const char *seed, const char *out, game_t *g)
-{
-	uint32_t s;
-
-	Seed = s = atoi(seed);
-
-	g->fp = fopen(out, "w");
-	if (g->fp == NULL) {
-		return 0;
-	}
-
-	g->timeout = prand() % 196 + 5;
-	g->numblocks = prand() % 1901 + 100;
-	g->height = prand() % 81 + 20;
-	g->width = prand() % 181 + 20;
-
-	if (s == 0) {
-		g->timeout = 5;
-		g->numblocks = 100;
-		g->height = 20;
-		g->width = 20;
-	}
-
-	g->center = g->width / 2;
-
-	return 1;
-}
-
-static void
-exit_game(game_t *g)
-{
-	fclose(g->fp);
 }
 
 static block_t *
@@ -203,6 +179,7 @@ get_table_buffer(block_t *bs, size_t count)
 
 	if (TableBuf == NULL) {
 		TableBuf = create_table(count);
+		TmpTable = create_table(count);
 		TableBufLen = count;
 	}
 
@@ -224,8 +201,142 @@ compare(const void *lhs, const void *rhs)
 	return (*r)->number - (*l)->number;
 }
 
+#if defined(CONFIG_OPT)
+
+static void
+bignum_dump(bignum_t *b)
+{
+	assert(b != NULL);
+	printf("===\n");
+	for (ssize_t i = b->count - 1; i >= 0; --i) {
+		printf("%.6u ", b->num[i]);
+	}
+	printf("\n");
+}
+
+static bignum_t *
+bignum_create(size_t order)
+{
+	bignum_t *ptr;
+
+	ptr = malloc(sizeof(bignum_t));
+	ptr->count = order / BIGNUM_ORDER + 1;
+	ptr->num = malloc(sizeof(uint32_t) * ptr->count);
+	memset(ptr->num, 0, sizeof(uint32_t) * ptr->count);
+
+	return ptr;
+}
+
+static void
+bignum_destroy(bignum_t *num)
+{
+	assert(num != NULL);
+	assert(num->num != NULL);
+	free(num->num);
+	free(num);
+}
+
+static void
+bignum_mul(bignum_t *lhs, uint16_t rhs)
+{
+	assert(lhs != NULL);
+
+	uint32_t carry = 0;
+
+	for (size_t i = 0; i < lhs->count; ++i) {
+		uint32_t tmp = lhs->num[i] * rhs + carry;
+		lhs->num[i] = tmp % BIGNUM_OOE;
+		carry = tmp / BIGNUM_OOE;
+	}
+}
+
+static void
+bignum_add(bignum_t *lhs, uint16_t rhs)
+{
+	assert(lhs != NULL);
+
+	uint32_t carry = 0;
+	uint32_t tmp = lhs->num[0] + rhs;
+	lhs->num[0] = tmp % BIGNUM_OOE;
+	carry = tmp / BIGNUM_OOE;
+	if (carry > 0) {
+		for (size_t i = 1; i < lhs->count; ++i) {
+			uint32_t tmp = lhs->num[i] + carry;
+			lhs->num[i] = tmp % BIGNUM_OOE;
+			carry = tmp / BIGNUM_OOE;
+			if (carry == 0) {
+				break;
+			}
+		}
+	}
+}
+
+static void
+bignum_div2(bignum_t *dst)
+{
+	assert(dst != NULL);
+
+	uint32_t borrow = 0;
+
+	for (ssize_t i = dst->count - 1; i >= 0; --i) {
+		uint32_t tmp = (dst->num[i] + borrow) / 2;
+		if (dst->num[i] & 1) {
+			borrow = BIGNUM_OOE;
+		}
+		else {
+			borrow = 0;
+		}
+		dst->num[i] = tmp;
+	}
+}
+
 static int
-isMultiplesOf3(block_t *bs[], size_t count)
+bignum_isOne(bignum_t *num)
+{
+	assert(num != NULL);
+
+	for (size_t i = 1; i < num->count; ++i) {
+		if (num->num[i] != 0) {
+			return 0;
+		}
+	}
+
+	return num->num[0] == 1;
+}
+
+static uint32_t
+bignum_calc_score(bignum_t *num)
+{
+	assert(num != NULL);
+
+	uint32_t score = 0;
+	while (!bignum_isOne(num)) {
+		if (num->num[0] & 1) {
+			bignum_mul(num, 3);
+			bignum_add(num, 1);
+		}
+		else {
+			bignum_div2(num);
+		}
+		++score;
+	}
+	return score;
+}
+
+static bignum_t *
+convert_bignum(block_t * const bs[], size_t count)
+{
+	bignum_t *dst = bignum_create(count * 3);
+	for (size_t i = 0; i < count; ++i) {
+		bignum_mul(dst, 1000);
+		bignum_add(dst, bs[i]->number);
+	}
+
+	return dst;
+}
+
+static int
+isMultiplesOf3(block_t * const bs[], size_t count)
 {
 	uint32_t total = 0;
 
@@ -255,17 +366,48 @@ exchange(block_t *bs[], size_t lhs, size_t rhs)
 }
 
 static void
+save(block_t *bs[], size_t count)
+{
+	for (size_t i = 0; i < count; ++i) {
+		TmpTable[i] = bs[i];
+	}
+}
+
+static void
+load(block_t *bs[], size_t count)
+{
+	for (size_t i = 0; i < count; ++i) {
+		bs[i] = TmpTable[i];
+	}
+}
+
+#endif // CONFIG_OPT
+
+static void
 sort_v(block_t *bs[], size_t count)
 {
+#if defined(CONFIG_OPT)
+	uint32_t score1, score2;
+	bignum_t *bnum;
+
+	qsort(bs, count, sizeof(block_t *), compare);
+	save(bs, count);
+
+	bnum = convert_bignum(bs, count);
+	score1 = bignum_calc_score(bnum);
+	bignum_destroy(bnum);
+
 	for (size_t i = 0; i < count; ++i) {
 		uint16_t n = bs[i]->number;
 		if (n / 100 < n % 10) {
 			reverse(bs[i]);
 		}
 	}
+#endif // CONFIG_OPT
 
 	qsort(bs, count, sizeof(block_t*), compare);
 
+#if defined(CONFIG_OPT)
 	if (isMultiplesOf3(bs, count)) {
 		uint16_t n;
 		size_t offset = 2;
@@ -280,11 +422,33 @@ sort_v(block_t *bs[], size_t count)
 			}
 		}
 	}
+
+	bnum = convert_bignum(bs, count);
+	score2 = bignum_calc_score(bnum);
+	bignum_destroy(bnum);
+
+	if (score1 > score2) {
+		// reset
+		load(bs, count);
+		for (size_t i = 0; i < count; ++i) {
+			bs[i]->count = 1;
+		}
+	}
+#endif // CONFIG_OPT
 }
 
 static void
 sort_h(block_t *bs[], size_t count)
 {
+#if defined (CONFIG_OPT)
+	for (size_t i = 0; i < count; ++i) {
+		uint16_t n = bs[i]->number;
+		if (n / 100 < n % 10) {
+			reverse(bs[i]);
+		}
+	}
+#endif // CONFIG_OPT
+
 	qsort(bs, count, sizeof(block_t*), compare);
 }
 
@@ -389,6 +553,11 @@ play_h(const game_t *g)
 static void
 play_horizontal(const game_t *g)
 {
+	for (size_t n = 0;
+	     n <= g->numblocks;
+	     n += (g->width / 3 + g->width % 3)) {
+		play_h(g);
+	}
 	play_h(g);
 }
 
@@ -417,6 +586,41 @@ play(const game_t *g)
 	else {
 		play_vertical(g);
 	}
+}
+
+static int
+init_game(const char *seed, const char *out, game_t *g)
+{
+	uint32_t s;
+
+	Seed = s = atoi(seed);
+
+	g->fp = fopen(out, "w");
+	if (g->fp == NULL) {
+		return 0;
+	}
+
+	g->timeout = prand() % 196 + 5;
+	g->numblocks = prand() % 1901 + 100;
+	g->height = prand() % 81 + 20;
+	g->width = prand() % 181 + 20;
+
+	if (s == 0) {
+		g->timeout = 5;
+		g->numblocks = 100;
+		g->height = 20;
+		g->width = 20;
+	}
+
+	g->center = g->width / 2;
+
+	return 1;
+}
+
+static void
+exit_game(game_t *g)
+{
+	fclose(g->fp);
 }
 
 int

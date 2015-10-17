@@ -1,0 +1,4 @@
+[package]
+name = "solver"
+version = "0.1.0"
+authors = ["Hiroo Ishikawa <hiroo.ishikawa@gmail.com>"]

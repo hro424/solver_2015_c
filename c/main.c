@@ -42,42 +42,23 @@ prand(void)
 	return (Seed >> 16) & 0x7FFF;
 }
 
-static void
-move_down(block_t *b)
-{
-	assert(b->count < b->ops_len);
-	b->ops[b->count++] = 'D';
-}
+#define move_down(bp, count)	move(bp, 'D', count)
+#define move_right(bp, count)	move(bp, 'R', count)
+#define move_left(bp, count)	move(bp, 'L', count)
+#define rotate(bp, count)	move(bp, 'C', count)
 
 static void
-move_left(block_t *b)
+move(block_t *b, char direction, size_t count)
 {
-	assert(b->count < b->ops_len);
-	b->ops[b->count++] = 'L';
-}
-
-static void
-move_right(block_t *b)
-{
-	assert(b->count < b->ops_len);
-	b->ops[b->count++] = 'R';
-}
-
-static void
-rotate(block_t *b)
-{
-	assert(b->count < b->ops_len);
-	b->ops[b->count++] = 'C';
+	assert(b->count + count < b->ops_len);
+	memset(&b->ops[b->count], direction, count);
+	b->count += count;
 }
 
 static int
 init_game(const char *seed, const char *out, game_t *g)
 {
 	uint32_t s;
-
-	if (g == NULL) {
-		return 0;
-	}
 
 	Seed = s = atoi(seed);
 
@@ -106,59 +87,7 @@ init_game(const char *seed, const char *out, game_t *g)
 static void
 exit_game(game_t *g)
 {
-	if (g != NULL) {
-		fclose(g->fp);
-	}
-}
-
-static void
-play(const game_t *g)
-{
-	size_t init;
-	size_t hoffset;
-	size_t voffset;
-
-	if (g == NULL) {
-		return;
-	}
-
-	if (g->width & 1) {
-		init = 0;
-	}
-	else {
-		init = 1;
-	}
-
-	hoffset = init;
-	voffset = 0;
-
-	for (size_t i = 0; i < g->numblocks; ++i) {
-		if (hoffset > g->width) {
-			hoffset = init;
-			continue;
-		}
-
-		// place it in vertical
-		fputc('D', g->fp);
-		fputc('C', g->fp);
-
-		if (hoffset > g->center) {
-			for (size_t j = 0; j < hoffset - g->center; ++j) {
-				fputc('L', g->fp);
-			}
-		}
-		else {
-			for (size_t j = 0; j < g->center - hoffset; ++j) {
-				fputc('R', g->fp);
-			}
-		}
-
-		++hoffset;
-
-		for (size_t j = 0; j < g->height - 2; ++j) {
-			fputc('D', g->fp);
-		}
-	}
+	fclose(g->fp);
 }
 
 static block_t *
@@ -190,16 +119,10 @@ static void
 destroy_blocks(block_t *bs, size_t count)
 {
 	ENTER();
-
-	if (bs == NULL) {
-		return;
-	}
+	assert(bs != NULL);
 
 	for (size_t i = 0; i < count; ++i) {
-		if (bs[i].ops != NULL) {
-			free(bs[i].ops);
-			bs[i].ops = NULL;
-		}
+		free(bs[i].ops);
 	}
 
 	free(bs);
@@ -235,7 +158,6 @@ get_block_buffer(size_t count, const game_t *g)
 	return bb;
 }
 
-
 static block_t **
 create_table(size_t count)
 {
@@ -257,11 +179,8 @@ static void
 destroy_table(block_t **t)
 {
 	ENTER();
-
-	if (t != NULL) {
-		free(t);
-	}
-
+	assert(t != NULL);
+	free(t);
 	EXIT();
 }
 
@@ -294,12 +213,22 @@ compare(const void *lhs, const void *rhs)
 	const block_t **l = (const block_t **)lhs;
 	const block_t **r = (const block_t **)rhs;
 
-	return (*l)->number - (*r)->number;
+	// reverse order
+	return (*r)->number - (*l)->number;
 }
 
 static void
 sort(block_t *bs[], size_t count)
 {
+	for (size_t i = 0; i < count; ++i) {
+		uint16_t n = bs[i]->number;
+		if (n / 100 < n % 10) {
+			rotate(bs[i], 2);
+			bs[i]->number = n / 100 +
+				n % 100 / 10 * 10 +
+				n % 10 * 100;
+		}
+	}
 	qsort(bs, count, sizeof(block_t*), compare);
 }
 
@@ -314,26 +243,25 @@ play_v(const game_t *g)
 	bs = get_block_buffer(g->width, g);
 	table = get_table_buffer(bs, g->width);
 
+	for (size_t i = 0; i < g->width; ++i) {
+		move_down(table[i], 1);
+	}
+
 	sort(table, g->width);
 
 	for (size_t i = 0; i < g->width; ++i) {
 		block_t *bp = table[i];
-		move_down(bp);
-		rotate(bp);
+		rotate(bp, 1);
 		if (i < g->center) {
-			for (size_t j = i; j < g->center; ++j) {
-				move_left(bp);
-			}
+			move_left(bp, g->center - i);
 		}
 		else {
-			for (size_t j = g->center; j < i; ++j) {
-				move_right(bp);
-			}
+			move_right(bp, i - g->center);
 		}
 
-		for (size_t j = 0; j < g->height - 2; ++j) {
-			move_down(bp);
-		}
+		// move down the height - 2 because it has already been
+		// moved down before sort().
+		move_down(bp, g->height - 2);
 	}
 
 	for (size_t i = 0; i < g->width; ++i) {
@@ -355,6 +283,10 @@ play_h(const game_t *g)
 	bs = get_block_buffer(count, g);
 	table = get_table_buffer(bs, count);
 
+	for (size_t i = 0; i < count; ++i) {
+		move_down(table[i], 1);
+	}
+
 	sort(table, count);
 
 	for (size_t i = 0; i < g->width / 3; ++i) {
@@ -362,42 +294,33 @@ play_h(const game_t *g)
 		size_t dest = i * 3 + 1;
 
 		if (dest < g->center) {
-			for (size_t j = dest; j < g->center; ++j) {
-				move_left(bp);
-			}
+			move_left(bp, g->center - dest);
 		}
 		else {
-			for (size_t j = g->center; j < dest; ++j) {
-				move_right(bp);
-			}
+			move_right(bp, dest - g->center);
 		}
 
-		for (size_t j = 0; j < g->height; ++j) {
-			move_down(bp);
-		}
+		// move down the height because it has already been
+		// moved down before sort().
+		move_down(bp, g->height - 1);
 	}
 
 	for (size_t i = g->width / 3; i < g->width % 3; ++i) {
 		block_t *bp = table[i];
-		move_down(bp);
-		rotate(bp);
+		rotate(bp, 1);
 		if (i < g->center) {
-			for (size_t j = i; j < g->center; ++j) {
-				move_left(bp);
-			}
+			move_left(bp, g->center - i);
 		}
 		else {
-			for (size_t j = g->center; j < i; ++j) {
-				move_right(bp);
-			}
+			move_right(bp, i - g->center);
 		}
 
-		for (size_t j = 0; j < g->height - 2; ++j) {
-			move_down(bp);
-		}
+		// move down the height because it has already been
+		// moved down before sort().
+		move_down(bp, g->height - 2);
 	}
 
-	for (size_t i = 0; i < g->width / 3; ++i) {
+	for (size_t i = 0; i < count; ++i) {
 		fputs(bs[i].ops, g->fp);
 	}
 
@@ -427,7 +350,7 @@ play_vertical(const game_t *g)
 }
 
 static void
-play2(const game_t *g)
+play(const game_t *g)
 {
 	if (g->numblocks < g->width) {
 		play_horizontal(g);
@@ -455,7 +378,7 @@ main(int argc, char *argv[])
 		return EXIT_FAILURE;
 	}
 
-	play2(&game);
+	play(&game);
 
 	destroy_blocks(BlockBuf, BlockBufLen);
 	destroy_table(TableBuf);

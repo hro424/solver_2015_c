@@ -16,18 +16,20 @@ static uint16_t
 prand(void)
 {
 	uint64_t s = Seed;
-	Seed = (uint32_t)((s * 1103515245ULL + 12345ULL) & 0xFFFFFFFFULL;
-	return (Seed >> 16) & 0x7FFFU;
+	Seed = (s * 1103515245 + 12345) & 0xFFFFFFFF;
+	return (Seed >> 16) & 0x7FFF;
 }
 
 static int
 init_game(const char *seed, const char *out, game_t *g)
 {
+	uint32_t s;
+
 	if (g == NULL) {
 		return 0;
 	}
 
-	Seed = atoi(argv[1]);
+	Seed = s = atoi(seed);
 
 	g->fp = fopen(out, "w");
 	if (g->fp == NULL) {
@@ -45,14 +47,24 @@ init_game(const char *seed, const char *out, game_t *g)
 		g->height = 20;
 		g->width = 20;
 	}
+
+	return 1;
 }
 
 static void
-play(game_t *g, FILE *fp)
+exit_game(game_t *g)
 {
-	uint32_t init;
-	uint32_t hoffset;
-	uint32_t voffset;
+	if (g != NULL) {
+		fclose(g->fp);
+	}
+}
+
+static void
+play(game_t *g)
+{
+	size_t init;
+	size_t hoffset;
+	size_t voffset;
 
 	if (g == NULL) {
 		return;
@@ -65,34 +77,34 @@ play(game_t *g, FILE *fp)
 		init = 1;
 	}
 
-	hoffset = 1;
+	hoffset = init;
 	voffset = 0;
 
-	for (int i = 0; i < g->numblocks; ++i) {
+	for (size_t i = 0; i < g->numblocks; ++i) {
 		if (hoffset > g->width) {
 			hoffset = init;
 			continue;
 		}
 
 		// place it in vertical
-		fputc('D', fp);
-		fputc('C', fp);
+		fputc('D', g->fp);
+		fputc('C', g->fp);
 
 		if (hoffset > g->width / 2) {
-			for (int j = 0; j < hoffset - g->width / 2; ++j) {
-				fputc('L', fp);
+			for (size_t j = 0; j < hoffset - g->width / 2; ++j) {
+				fputc('L', g->fp);
 			}
 		}
 		else {
-			for (int j = 0; j < g->width / 2 - hoffset; ++j) {
-				fputc('R', fp);
+			for (size_t j = 0; j < g->width / 2 - hoffset; ++j) {
+				fputc('R', g->fp);
 			}
 		}
 
 		++hoffset;
 
-		for (int j = 0; j < g->height - 2; ++j) {
-			fputc('D', fp);
+		for (size_t j = 0; j < g->height - 2; ++j) {
+			fputc('D', g->fp);
 		}
 	}
 }
@@ -100,7 +112,6 @@ play(game_t *g, FILE *fp)
 int
 main(int argc, char *argv[])
 {
-	uint32_t s;
 	game_t game;
 
 	if (argc != 3) {
@@ -118,3 +129,4 @@ main(int argc, char *argv[])
 
 	return EXIT_SUCCESS;
 }
+

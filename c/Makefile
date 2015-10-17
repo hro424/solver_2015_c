@@ -1,5 +1,6 @@
 CC = clang
-CFLAGS = -Wall -O3
+CFLAGS = -Wall -O3 -DNDEBUG
+#CFLAGS = -Wall -g
 TARGET = solver
 SRCS = main.c
 

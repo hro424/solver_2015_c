@@ -24,7 +24,7 @@ typedef struct game {
 
 typedef struct block_t {
 	uint16_t number;
-	uint16_t count;
+	size_t count;
 	char *ops;
 	size_t ops_len;
 } block_t;
@@ -367,7 +367,7 @@ play_h(const game_t *g)
 	}
 
 	for (size_t i = 0; i < g->width % 3; ++i) {
-		block_t *bp = table[i];
+		block_t *bp = table[g->width / 3 + i];
 		size_t dest = g->width - g->width % 3 + i;
 
 		rotate(bp, 1);

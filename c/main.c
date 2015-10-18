@@ -36,14 +36,14 @@ typedef struct bignum {
 
 static const uint32_t BIGNUM_OOE = 1000000;
 static const size_t BIGNUM_ORDER = 6;
-
 static const size_t OPS_MARGIN = 8;
 
 static uint32_t Seed;
 static block_t *BlockBuf;
 static size_t BlockBufLen;
 static block_t **TableBuf;
-static block_t **TmpTable;
+static block_t **TmpTable0;
+static block_t **TmpTable1;
 static size_t TableBufLen;
 
 static uint16_t
@@ -177,7 +177,8 @@ get_table_buffer(block_t *bs, size_t count)
 
 	if (TableBuf == NULL) {
 		TableBuf = create_table(count);
-		TmpTable = create_table(count);
+		TmpTable0 = create_table(count);
+		TmpTable1 = create_table(count);
 		TableBufLen = count;
 	}
 
@@ -335,7 +336,7 @@ bignum_calc_score(bignum_t *num)
 }
 
 static bignum_t *
-convert_bignum(block_t * const bs[], size_t count)
+convert_bignum_v(block_t * const bs[], size_t count)
 {
 	bignum_t *dst = bignum_create(count * 3);
 	for (size_t i = 0; i < count; ++i) {
@@ -347,6 +348,23 @@ convert_bignum(block_t * const bs[], size_t count)
 		bignum_add(dst, bs[i]->number % 100 / 10);
 	}
 	for (size_t i = 0; i < count; ++i) {
+		bignum_mul(dst, 10);
+		bignum_add(dst, bs[i]->number % 10);
+	}
+
+	return dst;
+}
+
+static bignum_t *
+convert_bignum_h(block_t * const bs[], size_t count)
+{
+	bignum_t *dst = bignum_create(count * 3);
+	for (size_t i = 0; i < count / 3 * 3; ++i) {
+		bignum_mul(dst, 1000);
+		bignum_add(dst, bs[i]->number);
+	}
+
+	for (size_t i = count / 3 * 3; i < count; ++i) {
 		bignum_mul(dst, 10);
 		bignum_add(dst, bs[i]->number % 10);
 	}
@@ -385,33 +403,35 @@ exchange(block_t *bs[], size_t lhs, size_t rhs)
 }
 
 static void
-save(block_t *bs[], size_t count)
+copy(block_t *dst[], block_t *src[], size_t count)
 {
 	for (size_t i = 0; i < count; ++i) {
-		TmpTable[i] = bs[i];
+		dst[i] = src[i];
 	}
 }
 
-static void
-load(block_t *bs[], size_t count)
+static uint32_t
+calc_score_v(block_t * const bs[], size_t count)
 {
-	for (size_t i = 0; i < count; ++i) {
-		bs[i] = TmpTable[i];
-	}
+	uint32_t score;
+	bignum_t *bnum;
+	bnum = convert_bignum_v(bs, count);
+	score = bignum_calc_score(bnum);
+	bignum_destroy(bnum);
+	return score;
 }
 
 static void
 sort_v(block_t *bs[], size_t count)
 {
-	uint32_t score1, score2;
-	bignum_t *bnum;
+	uint32_t score0, score1, score2;
+
+	copy(TmpTable0, bs, count);
+	score0 = calc_score_v(bs, count);
 
 	qsort(bs, count, sizeof(block_t *), compare);
-	save(bs, count);
-
-	bnum = convert_bignum(bs, count);
-	score1 = bignum_calc_score(bnum);
-	bignum_destroy(bnum);
+	copy(TmpTable1, bs, count);
+	score1 = calc_score_v(bs, count);
 
 	for (size_t i = 0; i < count; ++i) {
 		uint16_t n = bs[i]->number;
@@ -437,22 +457,48 @@ sort_v(block_t *bs[], size_t count)
 		}
 	}
 
-	bnum = convert_bignum(bs, count);
-	score2 = bignum_calc_score(bnum);
-	bignum_destroy(bnum);
+	score2 = calc_score_v(bs, count);
 
-	if (score1 > score2) {
-		// reset
-		load(bs, count);
-		for (size_t i = 0; i < count; ++i) {
-			bs[i]->count = 1;
+	if (score0 > score1) {
+		if (score0 > score2) {
+			// reset
+			copy(bs, TmpTable0, count);
+			for (size_t i = 0; i < count; ++i) {
+				bs[i]->count = 1;
+			}
 		}
 	}
+	else {
+		if (score1 > score2) {
+			// reset
+			copy(bs, TmpTable1, count);
+			for (size_t i = 0; i < count; ++i) {
+				bs[i]->count = 1;
+			}
+		}
+	}
+}
+
+static uint32_t
+calc_score_h(block_t * const bs[], size_t count)
+{
+	uint32_t score;
+	bignum_t *bnum;
+
+	bnum = convert_bignum_h(bs, count);
+	score = bignum_calc_score(bnum);
+	bignum_destroy(bnum);
+	return score;
 }
 
 static void
 sort_h(block_t *bs[], size_t count)
 {
+	uint32_t score1, score2;
+
+	score1 = calc_score_h(bs, count);
+	copy(TmpTable0, bs, count);
+
 	for (size_t i = 0; i < count; ++i) {
 		uint16_t n = bs[i]->number;
 		if (n / 100 < n % 10) {
@@ -461,6 +507,15 @@ sort_h(block_t *bs[], size_t count)
 	}
 
 	qsort(bs, count, sizeof(block_t*), compare);
+
+	score2 = calc_score_h(bs, count);
+	if (score1 > score2) {
+		// reset
+		copy(bs, TmpTable0, count);
+		for (size_t i = 0; i < count; ++i) {
+			bs[i]->count = 1;
+		}
+	}
 }
 
 static void
@@ -654,6 +709,8 @@ main(int argc, char *argv[])
 	play(&game);
 
 	destroy_blocks(BlockBuf, BlockBufLen);
+	destroy_table(TmpTable0);
+	destroy_table(TmpTable1);
 	destroy_table(TableBuf);
 
 	exit_game(&game);

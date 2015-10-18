@@ -29,7 +29,6 @@ typedef struct block {
 	size_t ops_len;
 } block_t;
 
-#if defined(CONFIG_OPT)
 typedef struct bignum {
 	uint32_t *num;
 	size_t count;
@@ -37,7 +36,6 @@ typedef struct bignum {
 
 static const uint32_t BIGNUM_OOE = 1000000;
 static const size_t BIGNUM_ORDER = 6;
-#endif
 
 static const size_t OPS_MARGIN = 8;
 
@@ -201,8 +199,7 @@ compare(const void *lhs, const void *rhs)
 	return (*r)->number - (*l)->number;
 }
 
-#if defined(CONFIG_OPT)
-
+#if defined(DEBUG)
 static void
 bignum_dump(bignum_t *b)
 {
@@ -213,6 +210,7 @@ bignum_dump(bignum_t *b)
 	}
 	printf("\n");
 }
+#endif
 
 static bignum_t *
 bignum_create(size_t order)
@@ -242,9 +240,10 @@ bignum_mul(bignum_t *lhs, uint16_t rhs)
 	assert(lhs != NULL);
 
 	uint32_t carry = 0;
+	uint32_t m = rhs;
 
 	for (size_t i = 0; i < lhs->count; ++i) {
-		uint32_t tmp = lhs->num[i] * rhs + carry;
+		uint32_t tmp = lhs->num[i] * m + carry;
 		lhs->num[i] = tmp % BIGNUM_OOE;
 		carry = tmp / BIGNUM_OOE;
 	}
@@ -304,6 +303,18 @@ bignum_isOne(bignum_t *num)
 	return num->num[0] == 1;
 }
 
+static int
+bignum_isMultiplesOf2(bignum_t *num)
+{
+	while (true) {
+		if (num[0] & 1) {
+			return 0;
+		}
+		bignum_div2(num);
+	}
+	return 1;
+}
+
 static uint32_t
 bignum_calc_score(bignum_t *num)
 {
@@ -328,8 +339,16 @@ convert_bignum(block_t * const bs[], size_t count)
 {
 	bignum_t *dst = bignum_create(count * 3);
 	for (size_t i = 0; i < count; ++i) {
-		bignum_mul(dst, 1000);
-		bignum_add(dst, bs[i]->number);
+		bignum_mul(dst, 10);
+		bignum_add(dst, bs[i]->number / 100);
+	}
+	for (size_t i = 0; i < count; ++i) {
+		bignum_mul(dst, 10);
+		bignum_add(dst, bs[i]->number % 100 / 10);
+	}
+	for (size_t i = 0; i < count; ++i) {
+		bignum_mul(dst, 10);
+		bignum_add(dst, bs[i]->number % 10);
 	}
 
 	return dst;
@@ -381,12 +400,9 @@ load(block_t *bs[], size_t count)
 	}
 }
 
-#endif // CONFIG_OPT
-
 static void
 sort_v(block_t *bs[], size_t count)
 {
-#if defined(CONFIG_OPT)
 	uint32_t score1, score2;
 	bignum_t *bnum;
 
@@ -403,17 +419,15 @@ sort_v(block_t *bs[], size_t count)
 			reverse(bs[i]);
 		}
 	}
-#endif // CONFIG_OPT
 
 	qsort(bs, count, sizeof(block_t*), compare);
 
-#if defined(CONFIG_OPT)
 	if (isMultiplesOf3(bs, count)) {
 		uint16_t n;
 		size_t offset = 2;
 		while (((n = bs[count - 1]->number) & 1) == 0) {
 			if ((n / 100) & 1) {
-				rotate(bs[count - 1], 2);
+				reverse(bs[count - 1]);
 				break;
 			}
 			else {
@@ -434,20 +448,17 @@ sort_v(block_t *bs[], size_t count)
 			bs[i]->count = 1;
 		}
 	}
-#endif // CONFIG_OPT
 }
 
 static void
 sort_h(block_t *bs[], size_t count)
 {
-#if defined (CONFIG_OPT)
 	for (size_t i = 0; i < count; ++i) {
 		uint16_t n = bs[i]->number;
 		if (n / 100 < n % 10) {
 			reverse(bs[i]);
 		}
 	}
-#endif // CONFIG_OPT
 
 	qsort(bs, count, sizeof(block_t*), compare);
 }

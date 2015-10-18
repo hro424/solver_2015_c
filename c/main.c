@@ -71,6 +71,14 @@ move(block_t *b, char direction, size_t count)
 	b->count += count;
 }
 
+static void
+reverse(block_t *bs)
+{
+	uint16_t n = bs->number;
+	rotate(bs, 2);
+	bs->number = n / 100 + n % 100 / 10 * 10 + n % 10 * 100;
+}
+
 static block_t *
 create_blocks(size_t count, const game_t *g)
 {
@@ -304,18 +312,6 @@ bignum_isOne(bignum_t *num)
 	return num->num[0] == 1;
 }
 
-static int
-bignum_isMultiplesOf2(bignum_t *num)
-{
-	while (1) {
-		if (num->num[0] & 1) {
-			return 0;
-		}
-		bignum_div2(num);
-	}
-	return 1;
-}
-
 static uint32_t
 bignum_calc_score(bignum_t *num)
 {
@@ -387,14 +383,6 @@ isMultiplesOf3(block_t * const bs[], size_t count)
 }
 
 static void
-reverse(block_t *bs)
-{
-	uint16_t n = bs->number;
-	rotate(bs, 2);
-	bs->number = n / 100 + n % 100 / 10 * 10 + n % 10 * 100;
-}
-
-static void
 exchange(block_t *bs[], size_t lhs, size_t rhs)
 {
 	block_t *tmp = bs[lhs];
@@ -403,7 +391,7 @@ exchange(block_t *bs[], size_t lhs, size_t rhs)
 }
 
 static void
-copy(block_t *dst[], block_t *src[], size_t count)
+copy_table(block_t *dst[], block_t *src[], size_t count)
 {
 	for (size_t i = 0; i < count; ++i) {
 		dst[i] = src[i];
@@ -426,11 +414,11 @@ sort_v(block_t *bs[], size_t count)
 {
 	uint32_t score0, score1, score2;
 
-	copy(TmpTable0, bs, count);
+	copy_table(TmpTable0, bs, count);
 	score0 = calc_score_v(bs, count);
 
 	qsort(bs, count, sizeof(block_t *), compare);
-	copy(TmpTable1, bs, count);
+	copy_table(TmpTable1, bs, count);
 	score1 = calc_score_v(bs, count);
 
 	for (size_t i = 0; i < count; ++i) {
@@ -462,7 +450,7 @@ sort_v(block_t *bs[], size_t count)
 	if (score0 > score1) {
 		if (score0 > score2) {
 			// reset
-			copy(bs, TmpTable0, count);
+			copy_table(bs, TmpTable0, count);
 			for (size_t i = 0; i < count; ++i) {
 				bs[i]->count = 1;
 			}
@@ -471,7 +459,7 @@ sort_v(block_t *bs[], size_t count)
 	else {
 		if (score1 > score2) {
 			// reset
-			copy(bs, TmpTable1, count);
+			copy_table(bs, TmpTable1, count);
 			for (size_t i = 0; i < count; ++i) {
 				bs[i]->count = 1;
 			}
@@ -497,7 +485,7 @@ sort_h(block_t *bs[], size_t count)
 	uint32_t score1, score2;
 
 	score1 = calc_score_h(bs, count);
-	copy(TmpTable0, bs, count);
+	copy_table(TmpTable0, bs, count);
 
 	for (size_t i = 0; i < count; ++i) {
 		uint16_t n = bs[i]->number;
@@ -511,7 +499,7 @@ sort_h(block_t *bs[], size_t count)
 	score2 = calc_score_h(bs, count);
 	if (score1 > score2) {
 		// reset
-		copy(bs, TmpTable0, count);
+		copy_table(bs, TmpTable0, count);
 		for (size_t i = 0; i < count; ++i) {
 			bs[i]->count = 1;
 		}
@@ -616,6 +604,9 @@ play_h(const game_t *g)
 	EXIT();
 }
 
+/**
+ * Stacks horizontal blocks
+ */
 static void
 play_horizontal(const game_t *g)
 {
@@ -627,6 +618,9 @@ play_horizontal(const game_t *g)
 	play_h(g);
 }
 
+/**
+ * Stacks vertical blocks
+ */
 static void
 play_vertical(const game_t *g)
 {
@@ -639,6 +633,8 @@ play_vertical(const game_t *g)
 		play_v(g);
 	}
 	else {
+		// Never give up.  Use horizontal blocks if the num of blocks
+		// is shorter then the width of the field.
 		play_h(g);
 	}
 }

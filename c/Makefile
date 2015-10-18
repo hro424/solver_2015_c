@@ -9,5 +9,5 @@ solver: $(SRCS)
 	$(CC) $(CFLAGS) -o $@ $<
 
 .PHONY: clean
-clean: $(TARGET)
-	rm -vf $(TARGET)
+clean: solver
+	rm -vf solver

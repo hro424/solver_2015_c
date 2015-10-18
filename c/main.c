@@ -306,8 +306,8 @@ bignum_isOne(bignum_t *num)
 static int
 bignum_isMultiplesOf2(bignum_t *num)
 {
-	while (true) {
-		if (num[0] & 1) {
+	while (1) {
+		if (num->num[0] & 1) {
 			return 0;
 		}
 		bignum_div2(num);
